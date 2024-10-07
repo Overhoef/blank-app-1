@@ -1,9 +1,9 @@
 import streamlit as st
-import pandas as pd
-import matplotlib as plt
-import numpy as np
-import plotly.express as px
-import folium
+#import pandas as pd
+#import matplotlib as plt
+#import numpy as np
+#import plotly.express as px
+#import folium
 st.set_page_config(layout="wide")
 
 #homepage
@@ -12,7 +12,7 @@ st.write(
     "Eens kijken of je vertraging gaat hebben vandaag.."
 )
 st.subheader('Kaart van alle routes vanaf "vliegveld"')
-folium.Map(location=[41,29])
+#folium.Map(location=[41,29])
 
 
 #Sidebar

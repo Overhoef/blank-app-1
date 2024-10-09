@@ -1,0 +1,274 @@
+import streamlit as st
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import geopandas as gpd
+import plotly.express as px
+import numpy as np
+from sklearn.linear_model import LinearRegression
+import pydeck as pdk
+import folium
+from streamlit_folium import st_folium
+from shapely.geometry import Point
+
+# streamlit configuraties
+st.set_page_config(layout="wide")
+
+st.sidebar.title('Flight Info')
+
+# Pad naar de CSV-bestanden
+schedule_airport_path = '/Users/justinhanssens/Downloads/Minor Data Science/Vlucht map/case3/schedule_airport.csv'
+airports_extended_path = '/Users/justinhanssens/Downloads/Minor Data Science/Vlucht map/case3/airports-extended-clean.csv'
+
+pd.set_option('display.max_columns', None)  # Laat alle kolommen zien
+pd.set_option('display.expand_frame_repr', False) 
+
+# CSV-bestanden inlezen met pandas
+schedule_airport = pd.read_csv(schedule_airport_path, sep=',', on_bad_lines='skip', low_memory=False)
+airports_extended = pd.read_csv(airports_extended_path, sep=';')
+
+
+# Toon de eerste paar rijen van elk bestand om te controleren of het goed is ingeladen
+print("Schedule Airport - Eerste 5 rijen:")
+print(schedule_airport.head())
+
+print("\nAirports Extended - Eerste 5 rijen:")
+print(airports_extended.head())
+
+
+
+
+# Titel voor de pagina
+st.title("Aantal Vertraagde Vluchten per Maand (2019 & 2020)")
+
+# Gebruik de Streamlit layout optie om de dropdown en grafiek naast elkaar te plaatsen
+col1, col2 = st.columns([3, 1])  # De eerste kolom is breder (voor de grafiek) en de tweede is smaller (voor de dropdown)
+
+# Zet de dropdown in de tweede kolom (rechts van de grafiek)
+with col2:
+    year_selection = st.selectbox("Selecteer een jaar", [2019, 2020])
+
+# Stap 1: Converteer STD naar een datetime-formaat en filter op het geselecteerde jaar
+schedule_airport['STD'] = pd.to_datetime(schedule_airport['STD'], format='%d/%m/%Y', errors='coerce')
+filtered_data = schedule_airport[schedule_airport['STD'].dt.year == year_selection]
+
+# Stap 2: Bereken de vertraging (ATA_ATD_ltc > STA_STD_ltc)
+filtered_data['STA_STD_ltc'] = pd.to_datetime(filtered_data['STA_STD_ltc'], format='%H:%M:%S', errors='coerce').dt.time
+filtered_data['ATA_ATD_ltc'] = pd.to_datetime(filtered_data['ATA_ATD_ltc'], format='%H:%M:%S', errors='coerce').dt.time
+filtered_data['Vertraagd'] = filtered_data['ATA_ATD_ltc'] > filtered_data['STA_STD_ltc']
+
+# Stap 3: Groepeer per maand en tel de vertraagde vluchten
+filtered_data['Maand'] = filtered_data['STD'].dt.strftime('%B')
+vertraagde_per_maand = filtered_data[filtered_data['Vertraagd']].groupby('Maand').size().reindex(
+    ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'], fill_value=0).reset_index()
+
+# Stap 4: Maak de interactieve Plotly grafiek voor het geselecteerde jaar
+fig = px.line(vertraagde_per_maand, x='Maand', y=0, markers=True, 
+              title=f"Aantal Vertraagde Vluchten per Maand in {year_selection}")
+
+# Pas de y-as dynamisch aan op basis van het geselecteerde jaar
+if year_selection == 2019:
+    y_range = [10000, 18000]  # Voor 2019, stel de y-as in van 10.000 tot 18.000
+    tickvals = list(range(10000, 18001, 2000))  # Sprongen van 2.000 voor 2019
+else:
+    y_range = [0, 12000]      # Voor 2020, stel de y-as in van 0 tot 12.000
+    tickvals = list(range(0, 12001, 2000))  # Sprongen van 2.000 voor 2020
+
+# Stap 5: Pas de x-as en y-as aan, met dynamische y-as limieten en sprongen van 2.000
+fig.update_layout(
+    xaxis_title="Maanden",
+    yaxis_title="Aantal Vertraagde Vluchten",
+    xaxis_tickangle=45,
+    hovermode="x unified",
+    yaxis=dict(
+        range=y_range,  # Dynamische y-as limieten op basis van het jaar
+        tickvals=tickvals  # Sprongen van 2.000
+    ),
+    height=600,  # Verhoog de hoogte van de grafiek
+    width=2400   # Maak de grafiek twee keer zo breed (2400 pixels)
+)
+
+# Toon de grafiek in de eerste kolom (links)
+with col1:
+    st.plotly_chart(fig)
+
+
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+# Titel voor de Streamlit-app
+st.title("Wereldkaart van Luchthavens")
+
+# Laad de dataset
+file_path = '/Users/justinhanssens/Downloads/Minor Data Science/Vlucht map/case3/airports-extended-clean.csv'
+airports = pd.read_csv(file_path, sep=';')
+
+# Zorg ervoor dat Latitude en Longitude correct worden geparsed (vervang komma's door punten)
+airports['Latitude'] = airports['Latitude'].str.replace(',', '.').astype(float)
+airports['Longitude'] = airports['Longitude'].str.replace(',', '.').astype(float)
+
+# Filter de relevante kolommen
+airports_map_data = airports[['Name', 'City', 'Country', 'IATA', 'ICAO', 'Latitude', 'Longitude']]
+
+# Maak een interactieve kaart met Plotly
+fig = px.scatter_geo(
+    airports_map_data,
+    lat='Latitude',
+    lon='Longitude',
+    hover_name='Name',  # Naam van de luchthaven wordt getoond als je eroverheen gaat
+    hover_data={'City': True, 'Country': True, 'IATA': True, 'ICAO': True},  # Extra informatie in de hover
+    projection='natural earth',  # Weergave van de wereldkaart
+)
+
+# Pas de grootte van de kaart aan en voeg zoom- en pan-functionaliteiten toe
+fig.update_geos(
+    showcountries=True,  # Laat landen zien
+    showcoastlines=True,  # Laat kustlijnen zien
+    showland=True,  # Laat land zien
+    landcolor='lightgray',
+    coastlinecolor='black',
+    projection_scale=1.5,  # Dit werkt als een zoom-factor
+    center=dict(lat=20, lon=0),  # Centraal punt van de kaart (kun je aanpassen)
+)
+
+# Pas de layout aan om de kaart nog groter te maken en verminder marges
+fig.update_layout(
+    height=1000,  # Verhoog de hoogte van de kaart
+    margin={"r":0,"t":0,"l":0,"b":0},  # Minimaliseer alle marges
+    geo=dict(
+        projection_scale=1.5,  # Zoomfactor
+        lataxis_range=[-90, 90],  # Vergrendel het bereik van latitude
+        lonaxis_range=[-180, 180],  # Vergrendel het bereik van longitude
+    ),
+    autosize=True,  # Automatische grootte-aanpassing
+)
+
+# Toon de kaart in Streamlit
+st.plotly_chart(fig, use_container_width=True)
+
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+# Titel voor de Streamlit-app
+st.title("Verdeling van Luchthaventypes")
+
+# Laad de dataset
+file_path = '/Users/justinhanssens/Downloads/Minor Data Science/Vlucht map/case3/airports-extended-clean.csv'
+airports = pd.read_csv(file_path, sep=';')
+
+# Filter de dataset op de 'Type' kolom (voor de luchthaventypes)
+luchthaven_types = airports['Type'].unique()
+
+# Creëer een multiselect widget zodat gebruikers luchthaventypes kunnen kiezen
+selected_types = st.multiselect(
+    'Selecteer luchthaventypes om te tonen',
+    options=luchthaven_types,
+    default=luchthaven_types  # Standaard worden alle types getoond
+)
+
+# Filter de dataset op de geselecteerde types
+filtered_data = airports[airports['Type'].isin(selected_types)]
+
+# Groepeer op type en tel het aantal luchthavens per type
+type_counts = filtered_data['Type'].value_counts().reset_index()
+type_counts.columns = ['Type', 'Aantal']
+
+# Maak een taartdiagram met Plotly Express
+fig = px.pie(type_counts, values='Aantal', names='Type', title='Verdeling van Luchthaventypes')
+
+# Toon de grafiek in Streamlit
+st.plotly_chart(fig)
+
+# Optioneel: Toon de verdeling ook als bar chart
+if st.checkbox("Toon als staafdiagram"):
+    bar_fig = px.bar(type_counts, x='Type', y='Aantal', title='Verdeling van Luchthaventypes (Staafdiagram)')
+    st.plotly_chart(bar_fig)
+
+
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+# Titel voor de Streamlit-app
+st.title("Verdeling van Luchthaventypes (Alleen Airports)")
+
+# Laad de dataset
+file_path = '/Users/justinhanssens/Downloads/Minor Data Science/Vlucht map/case3/airports-extended-clean.csv'
+airports = pd.read_csv(file_path, sep=';')
+
+# Filter alleen de luchthavens met Type 'airport'
+airports_filtered = airports[airports['Type'] == 'airport']
+
+# Groepeer op type en tel het aantal luchthavens per type
+type_counts = airports_filtered['Type'].value_counts().reset_index()
+type_counts.columns = ['Type', 'Aantal']
+
+# Maak een taartdiagram met Plotly Express
+fig = px.pie(type_counts, values='Aantal', names='Type', title='Verdeling van Luchthaventypes (Alleen Airports)')
+
+# Toon de grafiek in Streamlit
+st.plotly_chart(fig)
+
+# Optioneel: Toon de verdeling ook als bar chart met een unieke key voor de checkbox
+if st.checkbox("Toon als staafdiagram", key="bar_chart_checkbox"):
+    bar_fig = px.bar(type_counts, x='Type', y='Aantal', title='Verdeling van Luchthaventypes (Staafdiagram)')
+    st.plotly_chart(bar_fig)
+
+
+
+
+
+
+
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+# Titel voor de Streamlit-app
+st.title("Wereldkaart van Luchthavens (Type: Airport)")
+
+# Laad de dataset
+file_path = '/Users/justinhanssens/Downloads/Minor Data Science/Vlucht map/case3/airports-extended-clean.csv'
+airports = pd.read_csv(file_path, sep=';')
+
+# Filter alleen de luchthavens met Type 'airport'
+airports_filtered = airports[airports['Type'] == 'airport']
+
+# Zorg ervoor dat Latitude en Longitude correct worden geparsed (vervang komma's door punten)
+airports_filtered['Latitude'] = airports_filtered['Latitude'].str.replace(',', '.').astype(float)
+airports_filtered['Longitude'] = airports_filtered['Longitude'].str.replace(',', '.').astype(float)
+
+# Maak een interactieve kaart met Plotly Express voor de luchthavens
+fig = px.scatter_geo(
+    airports_filtered,
+    lat='Latitude',
+    lon='Longitude',
+    hover_name='Name',  # Naam van de luchthaven wordt getoond als je eroverheen gaat
+    hover_data={'City': True, 'Country': True, 'IATA': True, 'ICAO': True},  # Extra informatie in de hover
+    projection='natural earth',  # Weergave van de wereldkaart
+    title='Wereldkaart van Luchthavens (Type: Airport)'
+)
+
+# Pas de layout aan om de kaart beter weer te geven
+fig.update_layout(
+    height=800,  # Verhoog de hoogte van de kaart
+    margin={"r":0,"t":0,"l":0,"b":0},  # Minimaliseer de marges
+    geo=dict(
+        showland=True,
+        landcolor="lightgray",
+        coastlinecolor="gray",
+        projection_type='natural earth',
+    )
+)
+
+# Toon de kaart in Streamlit
+st.plotly_chart(fig, use_container_width=True)
+
+
+

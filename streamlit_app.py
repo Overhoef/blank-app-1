@@ -151,7 +151,7 @@ with data_notes:
     with col1:
 
         # Laad de dataset
-        airports = pd.read_csv(file_path, sep=';')
+        airports = pd.read_csv('./airports-extended-clean.csv', sep=';')
 
         # Filter de dataset op de 'Type' kolom (voor de luchthaventypes)
         luchthaven_types = airports['Type'].unique()

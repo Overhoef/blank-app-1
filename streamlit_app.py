@@ -145,6 +145,58 @@ with delays:
         # Grafiek showcasen
         st.plotly_chart(fig2, use_container_width=True)
 
+
+    # Gebruik de Streamlit layout optie om de dropdown en grafiek naast elkaar te plaatsen
+col1, col2 = st.columns([3, 1])  # De eerste kolom is breder (voor de grafiek) en de tweede is smaller (voor de dropdown)
+
+# Zet de dropdown in de tweede kolom (rechts van de grafiek)
+with col2:
+    year_selection = st.selectbox("Selecteer een jaar", [2019, 2020])
+
+# Stap 1: Converteer STD naar een datetime-formaat en filter op het geselecteerde jaar
+schedule_airport['STD'] = pd.to_datetime(schedule_airport['STD'], format='%d/%m/%Y', errors='coerce')
+filtered_data = schedule_airport[schedule_airport['STD'].dt.year == year_selection]
+
+# Stap 2: Bereken de vertraging (ATA_ATD_ltc > STA_STD_ltc)
+filtered_data['STA_STD_ltc'] = pd.to_datetime(filtered_data['STA_STD_ltc'], format='%H:%M:%S', errors='coerce').dt.time
+filtered_data['ATA_ATD_ltc'] = pd.to_datetime(filtered_data['ATA_ATD_ltc'], format='%H:%M:%S', errors='coerce').dt.time
+filtered_data['Vertraagd'] = filtered_data['ATA_ATD_ltc'] > filtered_data['STA_STD_ltc']
+
+# Stap 3: Groepeer per maand en tel de vertraagde vluchten
+filtered_data['Maand'] = filtered_data['STD'].dt.strftime('%B')
+vertraagde_per_maand = filtered_data[filtered_data['Vertraagd']].groupby('Maand').size().reindex(
+    ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'], fill_value=0).reset_index()
+
+# Stap 4: Maak de interactieve Plotly grafiek voor het geselecteerde jaar
+fig = px.line(vertraagde_per_maand, x='Maand', y=0, markers=True, 
+              title=f"Aantal Vertraagde Vluchten per Maand in {year_selection}")
+
+# Pas de y-as dynamisch aan op basis van het geselecteerde jaar
+if year_selection == 2019:
+    y_range = [10000, 18000]  # Voor 2019, stel de y-as in van 10.000 tot 18.000
+    tickvals = list(range(10000, 18001, 2000))  # Sprongen van 2.000 voor 2019
+else:
+    y_range = [0, 12000]      # Voor 2020, stel de y-as in van 0 tot 12.000
+    tickvals = list(range(0, 12001, 2000))  # Sprongen van 2.000 voor 2020
+
+# Stap 5: Pas de x-as en y-as aan, met dynamische y-as limieten en sprongen van 2.000
+fig.update_layout(
+    xaxis_title="Maanden",
+    yaxis_title="Aantal Vertraagde Vluchten",
+    xaxis_tickangle=45,
+    hovermode="x unified",
+    yaxis=dict(
+        range=y_range,  # Dynamische y-as limieten op basis van het jaar
+        tickvals=tickvals  # Sprongen van 2.000
+    ),
+    height=600,  # Verhoog de hoogte van de grafiek
+    width=2400   # Maak de grafiek twee keer zo breed (2400 pixels)
+)
+
+# Toon de grafiek in de eerste kolom (links)
+with col1:
+    st.plotly_chart(fig)
+    
 # data notes tab
 with data_notes:
     col1, col2 = st.columns(2)

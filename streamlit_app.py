@@ -6,10 +6,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 st.set_page_config(layout="wide")
-
 df = pd.read_csv('schedule_airport.csv')
-file_path = '/Users/olavverhoef/Desktop/Minor/Case3/blank-app-1/airports-extended-clean.csv'
-airports = pd.read_csv(file_path, sep=';')
+airports = pd.read_csv('airports-extended-clean.csv', sep=';')
 
 # homepage
 st.title("🛫 VLUCHTEN 🛬")

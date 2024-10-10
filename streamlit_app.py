@@ -154,8 +154,8 @@ with col2:
     year_selection = st.selectbox("Selecteer een jaar", [2019, 2020])
 
 # Stap 1: Converteer STD naar een datetime-formaat en filter op het geselecteerde jaar
-schedule_airport['STD'] = pd.to_datetime(schedule_airport['STD'], format='%d/%m/%Y', errors='coerce')
-filtered_data = schedule_airport[schedule_airport['STD'].dt.year == year_selection]
+df['STD'] = pd.to_datetime(df['STD'], format='%d/%m/%Y', errors='coerce')
+filtered_data = df[df['STD'].dt.year == year_selection]
 
 # Stap 2: Bereken de vertraging (ATA_ATD_ltc > STA_STD_ltc)
 filtered_data['STA_STD_ltc'] = pd.to_datetime(filtered_data['STA_STD_ltc'], format='%H:%M:%S', errors='coerce').dt.time

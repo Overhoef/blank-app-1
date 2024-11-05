@@ -264,6 +264,7 @@ with prediction:
     recall = recall_score(y_test, y_pred)
     f1 = f1_score(y_test, y_pred)
 
+    st.write("Op basis van features: 'Minute', 'Hour', 'Airline', 'Origin', 'Destination'")
     st.write("Accuracy:", accuracy)
     st.write("Precision:", precision)
     st.write("Recall:", recall)

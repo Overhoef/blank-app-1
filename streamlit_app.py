@@ -4,10 +4,21 @@ import matplotlib as plt
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import seaborn as sns
+
+# machine learning
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import matplotlib.pyplot as plt
 
 st.set_page_config(layout="wide")
-df = pd.read_csv('./schedule_airport.csv')
-airports = pd.read_csv('./airports-extended-clean.csv', sep=';')
+st.sidebar.header('Sidebar')
+
+df = pd.read_csv('schedule_airport.csv')
+file_path = '/Users/olavverhoef/Desktop/Minor/Case3/blank-app-1/airports-extended-clean.csv'
+airports = pd.read_csv(file_path, sep=';')
 
 # homepage
 st.title("🛫 VLUCHTEN 🛬")
@@ -66,7 +77,7 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 #Tabs
-delays, data_notes = st.tabs(["vertraging", "notities"])
+delays, data_notes, prediction = st.tabs(["vertraging", "notities", "voorspelling"])
 
 #tab vertraging
 with delays:
@@ -145,65 +156,12 @@ with delays:
         # Grafiek showcasen
         st.plotly_chart(fig2, use_container_width=True)
 
-
-    # Gebruik de Streamlit layout optie om de dropdown en grafiek naast elkaar te plaatsen
-col1, col2 = st.columns([3, 1])  # De eerste kolom is breder (voor de grafiek) en de tweede is smaller (voor de dropdown)
-
-# Zet de dropdown in de tweede kolom (rechts van de grafiek)
-with col2:
-    year_selection = st.selectbox("Selecteer een jaar", [2019, 2020])
-
-# Stap 1: Converteer STD naar een datetime-formaat en filter op het geselecteerde jaar
-df['STD'] = pd.to_datetime(df['STD'], format='%d/%m/%Y', errors='coerce')
-filtered_data = df[df['STD'].dt.year == year_selection]
-
-# Stap 2: Bereken de vertraging (ATA_ATD_ltc > STA_STD_ltc)
-filtered_data['STA_STD_ltc'] = pd.to_datetime(filtered_data['STA_STD_ltc'], format='%H:%M:%S', errors='coerce').dt.time
-filtered_data['ATA_ATD_ltc'] = pd.to_datetime(filtered_data['ATA_ATD_ltc'], format='%H:%M:%S', errors='coerce').dt.time
-filtered_data['Vertraagd'] = filtered_data['ATA_ATD_ltc'] > filtered_data['STA_STD_ltc']
-
-# Stap 3: Groepeer per maand en tel de vertraagde vluchten
-filtered_data['Maand'] = filtered_data['STD'].dt.strftime('%B')
-vertraagde_per_maand = filtered_data[filtered_data['Vertraagd']].groupby('Maand').size().reindex(
-    ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'], fill_value=0).reset_index()
-
-# Stap 4: Maak de interactieve Plotly grafiek voor het geselecteerde jaar
-fig = px.line(vertraagde_per_maand, x='Maand', y=0, markers=True, 
-              title=f"Aantal Vertraagde Vluchten per Maand in {year_selection}")
-
-# Pas de y-as dynamisch aan op basis van het geselecteerde jaar
-if year_selection == 2019:
-    y_range = [10000, 18000]  # Voor 2019, stel de y-as in van 10.000 tot 18.000
-    tickvals = list(range(10000, 18001, 2000))  # Sprongen van 2.000 voor 2019
-else:
-    y_range = [0, 12000]      # Voor 2020, stel de y-as in van 0 tot 12.000
-    tickvals = list(range(0, 12001, 2000))  # Sprongen van 2.000 voor 2020
-
-# Stap 5: Pas de x-as en y-as aan, met dynamische y-as limieten en sprongen van 2.000
-fig.update_layout(
-    xaxis_title="Maanden",
-    yaxis_title="Aantal Vertraagde Vluchten",
-    xaxis_tickangle=45,
-    hovermode="x unified",
-    yaxis=dict(
-        range=y_range,  # Dynamische y-as limieten op basis van het jaar
-        tickvals=tickvals  # Sprongen van 2.000
-    ),
-    height=600,  # Verhoog de hoogte van de grafiek
-    width=2400   # Maak de grafiek twee keer zo breed (2400 pixels)
-)
-
-# Toon de grafiek in de eerste kolom (links)
-with col1:
-    st.plotly_chart(fig)
-    
 # data notes tab
 with data_notes:
     col1, col2 = st.columns(2)
     with col1:
-
         # Laad de dataset
-        airports = pd.read_csv('./airports-extended-clean.csv', sep=';')
+        airports = pd.read_csv(file_path, sep=';')
 
         # Filter de dataset op de 'Type' kolom (voor de luchthaventypes)
         luchthaven_types = airports['Type'].unique()
@@ -252,3 +210,94 @@ with data_notes:
         if st.checkbox("Toon als staafdiagram", key="bar_chart_checkbox"):
             bar_fig = px.bar(type_counts, x='Type', y='Aantal', title='Verdeling van Luchthaventypes (Staafdiagram)')
             st.plotly_chart(bar_fig)
+
+with prediction:
+    # Load data
+    data = pd.read_csv('schedule_airport.csv')
+
+    # Convert time columns to datetime (specify format if needed) 
+    data['ATA_ATD_ltc'] = pd.to_datetime(data['ATA_ATD_ltc'], format='mixed')
+    data['STA_STD_ltc'] = pd.to_datetime(data['STA_STD_ltc'], format='mixed')
+
+    # Feature engineering
+    # Convert 'STA_STD_ltc' to datetime
+    data['STA_STD_ltc'] = pd.to_datetime(data['STA_STD_ltc'], format='%Y-%m-%d %H:%M:%S')
+    # Extract hour from STA_STD_ltc
+    data['Minute'] = data['STA_STD_ltc'].dt.minute
+    data['Hour'] = data['STA_STD_ltc'].dt.hour
+    data['Delay'] = (data['ATA_ATD_ltc'] - data['STA_STD_ltc']).dt.total_seconds() / 60
+    data['Airline'] = data['Identifier'].str.slice(0, 2)  # Extract airline code
+    data['Origin'] = data['Org/Des'].str.split('/').str[0]
+    data['Destination'] = data['Org/Des'].str.split('/').str[1]
+
+    # Define delay threshold (minutes)
+    delay_threshold = 1.6
+
+    # Create binary target variable (Delayed: 1, Not Delayed: 0)
+    data['Delayed'] = (data['ATA_ATD_ltc'] - data['STA_STD_ltc']).dt.total_seconds() / 60 > delay_threshold
+
+    # Extract relevant features (consider adding more)
+    features = ['Minute', 'Hour', 'Airline', 'Origin', 'Destination']
+    X = data[features]
+    y = data['Delayed']
+
+    # Encode categorical features
+    categorical_features = ['Minute', 'Hour', 'Airline', 'Origin', 'Destination']
+    X_encoded = pd.get_dummies(X, columns=categorical_features)
+
+    # Split data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(X_encoded, y, test_size=0.2, random_state=42)
+
+    # Scale numerical features (optional)
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    # Train the logistic regression model
+    model = LogisticRegression()
+    model.fit(X_train_scaled, y_train)
+
+    # Make predictions on the testing set
+    y_pred = model.predict(X_test_scaled)
+
+    # Evaluate the model's performance
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+
+    st.write("Accuracy:", accuracy)
+    st.write("Precision:", precision)
+    st.write("Recall:", recall)
+    st.write("F1-score:", f1)
+
+    # ... (optional: plot visualizations)
+    from sklearn.metrics import roc_curve, auc
+
+    fpr, tpr, thresholds = roc_curve(y_test, y_pred)
+    roc_auc = auc(fpr, tpr)
+    # Define the ROC curve trace
+    trace = go.Scatter(
+        x=fpr,
+        y=tpr,
+        mode='lines',  # Set mode to 'lines' for a line plot
+        name='ROC Curve (AUC = {}'.format(roc_auc),  # Include AUC in legend
+        line=dict(color='darkorange', width=2)  # Set line color and width
+    )
+    # Define the reference line (diagonal)
+    diagonal = go.Scatter(
+        x=[0, 1],
+        y=[0, 1],
+        mode='lines',
+        line=dict(color='navy', width=2, dash='dash')  # Set line color, width, and dash style
+    )
+    # Create the layout
+    layout = go.Layout(
+        title="Receiver Operating Characteristic (ROC) Curve",
+        xaxis=dict(title="False Positive Rate"),
+        yaxis=dict(title="True Positive Rate"),
+    )
+    # Create the figure
+    fig = go.Figure(data=[trace, diagonal], layout=layout)
+
+    st.plotly_chart(fig)
